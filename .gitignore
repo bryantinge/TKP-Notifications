@@ -2,6 +2,7 @@ venv*
 scripts
 sql
 data
+deployment
 
 __pycache__
 
