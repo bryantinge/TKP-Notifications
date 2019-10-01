@@ -1,26 +1,34 @@
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 from bs4 import BeautifulSoup
-from datetime import datetime
-import os
+from utils import get_env, send_sms, parse_date
+from operator import itemgetter
 import requests
-import boto3
-import send_sms
 
-def get_env(name):
-    try: 
-        return os.environ[name]
-    except KeyError:
-        import config
-        return config.config[name]
+DB_USERNAME = get_env('DB_USERNAME')
+DB_PASSWORD = get_env('DB_PASSWORD')
+DB_URL = get_env('DB_URL')
+DB_PORT = get_env('DB_PORT')
+DB_NAME = get_env('DB_NAME')
 
-ARTICLE_TABLE = get_env('ARTICLE_TABLE')
+connection_string = 'postgresql://{}:{}@{}:{}/{}'.format(
+    DB_USERNAME, DB_PASSWORD, DB_URL, DB_PORT, DB_NAME)
 
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(ARTICLE_TABLE)
+Base = declarative_base()
+engine = create_engine(connection_string)
+Session = sessionmaker(bind=engine)
+session = Session()
+
 base_url = 'https://www.thekeyplay.com'
 
-def parse_date(date):
-    date_formatted = datetime.strptime(date, '%B %d, %Y, %I:%M %p')
-    return datetime.strftime(date_formatted, '%Y-%m-%d %H:%M')
+
+class Article(Base):
+    __tablename__ = 'tkp-articles'
+    id = Column(Integer, primary_key=True)
+    title = Column(String())
+    author = Column(String())
+    date = Column(String())
 
 
 def scrape_articles():
@@ -29,34 +37,44 @@ def scrape_articles():
     titles = soup.find_all('h2', class_='node__title node-title')
     dates = soup.find_all('span', class_='node-submitted-date')
     authors = soup.find_all('span', class_='node-submitted-name')
-    article_urls = soup.find_all('h2', class_='node__title node-title')
-    # print(titles)
+
     articles_scraped = [{
-                        'title': titles[i].text, 
-                        'date': parse_date(dates[i].text[3:]), 
-                        'author': authors[i].text[4:]
-                        # 'article_url': 
+                        'title': titles[i].text,
+                        'author': authors[i].text[4:],
+                        'date': parse_date(dates[i].text[3:])
                         } for i, title in enumerate(titles)]
+
+    articles_scraped.reverse()
+
     return(articles_scraped)
 
 
-def scan_articles():
-    articles_db = table.scan()['Items']
-    return(articles_db)
+def query_articles():
+    articles_query = [{'id': instance.id,
+                       'title': instance.title,
+                       'author': instance.author,
+                       'date': instance.date}
+                      for instance in session.query(Article).order_by(
+                      Article.id.desc()).limit(20)]
+
+    return(articles_query)
 
 
-def notification(articles_scraped, articles_db):
-    if articles_scraped[0] in articles_db:
-        print('No new articles')
-    else:
-        for article in articles_scraped:
-            if article not in articles_db:
-                response = table.put_item(Item=article)
+def notification(articles_scraped, articles_query):
+    id = articles_query[0]['id']
 
-                title = article['title']
-                author = article['author']
-                print('Added to database: "{}"').format(title)
+    for article in articles_scraped:
+        if article['title'] not in map(itemgetter('title'), articles_query):
 
-                notification = 'New Article: {}\nBy: {}'.format(title, author)
-                send_sms.send_sms(notification)
-                print('SMS notification sent')
+            id += 1
+            title = article['title']
+            author = article['author']
+            date = article['date']
+
+            add_article = Article(id=id, title=title, author=author, date=date)
+
+            session.add(add_article)
+            session.commit()
+
+            notification = 'New Article: {}\nBy: {}'.format(title, author)
+            send_sms(notification)
