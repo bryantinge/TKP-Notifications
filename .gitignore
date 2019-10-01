@@ -1,4 +1,8 @@
-venv
+venv*
+scripts
+sql
+data
+
 __pycache__
 
 *.bat
