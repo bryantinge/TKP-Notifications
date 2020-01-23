@@ -46,7 +46,7 @@ def scrape_articles():
 
     articles_scraped.reverse()
 
-    return(articles_scraped)
+    return articles_scraped
 
 
 def query_articles():
@@ -57,10 +57,10 @@ def query_articles():
                       for instance in session.query(Article).order_by(
                       Article.id.desc()).limit(20)]
 
-    return(articles_query)
+    return articles_query
 
 
-def notification(articles_scraped, articles_query):
+def filter_articles(articles_scraped, articles_query):
     id = articles_query[0]['id']
 
     for article in articles_scraped:
