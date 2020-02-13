@@ -1,17 +1,7 @@
-venv*
-scripts
-sql
-data
-deployment
-
 __pycache__
-
-*.bat
-*.ebignore
+deployment
+scripts
+venv
 
 config.py
 comment_scraper.py
-
-.elasticbeanstalk/*
-!.elasticbeanstalk/*.cfg.yml
-!.elasticbeanstalk/*.global.yml
